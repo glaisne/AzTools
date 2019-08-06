@@ -1,4 +1,4 @@
-function Test-AzureRMCurrentSubscription
+function Test-AzCurrentSubscription
 {
     [CmdletBinding()]
     [OutputType([Boolean])]
@@ -23,7 +23,7 @@ function Test-AzureRMCurrentSubscription
 
     )
 
-    $context = get-azurermContext
+    $context = get-azContext
     switch ($PSCmdlet.ParameterSetName)
     {
         'Id'

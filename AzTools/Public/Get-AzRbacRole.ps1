@@ -20,7 +20,7 @@
 .FUNCTIONALITY
     The functionality that best describes this cmdlet
 #>
-function Get-AzureRMRbacRole
+function Get-AzRbacRole
 {
     [CmdletBinding(DefaultParameterSetName = 'All')]
     [Alias()]
@@ -38,9 +38,7 @@ function Get-AzureRMRbacRole
         $RoleName,
         
         # Param2 help description
-        [Parameter(Mandatory = $true,
-            Position = 0,
-            ParameterSetName = 'All')]
+        [Parameter(ParameterSetName = 'All')]
         [switch]
         $All,
         
@@ -66,7 +64,7 @@ function Get-AzureRMRbacRole
         {
             'All'
             {
-                $SubscriptionPool = Get-AzureRMSubscription
+                $SubscriptionPool = Get-azSubscription
                 break
             }
             'SubscriptionName'
@@ -76,7 +74,7 @@ function Get-AzureRMRbacRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionName $SubName -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionName $SubName -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -95,7 +93,7 @@ function Get-AzureRMRbacRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionId $SubId -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionId $SubId -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -124,12 +122,12 @@ function Get-AzureRMRbacRole
 
             # Try up to 10 times to swich to the specific subscription
             $TryCount = 0
-            while (-Not $(Test-AzureRMCurrentSubscription -Id $SubscriptionId) -or $TryCount -gt 10)
+            while (-Not $(Test-azCurrentSubscription -Id $SubscriptionId) -or $TryCount -gt 10)
             {
                 try
                 {
                     Write-Verbose "[$(Get-Date -format G)] Selecting Azure Subscription $SubscriptionName"
-                    $null = Select-AzureRmSubscription -SubscriptionId $SubscriptionId -erroraction Stop
+                    $null = Select-azSubscription -SubscriptionId $SubscriptionId -erroraction Stop
                 }
                 catch
                 {
@@ -141,14 +139,14 @@ function Get-AzureRMRbacRole
             }
 
             # Test if we are in the proper subscription context
-            if ($(get-azurermcontext).subscription.id -ne $SubscriptionId)
+            if ($(get-azcontext).subscription.id -ne $SubscriptionId)
             {
-                Write-warning "Failed to set the proper context : ($($(get-azurermcontext).subscription.name))"
+                Write-warning "Failed to set the proper context : ($($(get-azcontext).subscription.name))"
                 continue
             }
             else
             {
-                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azurermcontext).subscription.name)"
+                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azcontext).subscription.name)"
             }
 
 
@@ -163,7 +161,7 @@ function Get-AzureRMRbacRole
                     RoleDefinitionName = $RoleName
                     Scope              = "/subscriptions/$SubscriptionID"
                 }
-                Get-AzureRmRoleAssignment @Param1 -ErrorAction 'Stop' | select *, @{'Name' = 'SubscriptionName' ; 'Expression' = {$SubscriptionName}}
+                Get-azRoleAssignment @Param1 -ErrorAction 'Stop' | select *, @{'Name' = 'SubscriptionName' ; 'Expression' = {$SubscriptionName}}
             }
             catch
             {

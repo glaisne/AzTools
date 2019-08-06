@@ -1,4 +1,4 @@
-function Get-AzureRMVMIPAddresses
+function Get-AzVMIPAddresses
 {
     [CmdletBinding()]
     [Alias()]
@@ -35,14 +35,14 @@ function Get-AzureRMVMIPAddresses
                 PublicIps  = [System.Collections.ArrayList]::new()
             }
 
-            Get-AzureRmNetworkInterface -ResourceGroupName Rmilne-Tailspintoys-Canada | ForEach { $Interface = $_.Name; $IPs = $_ | Get-AzureRmNetworkInterfaceIpConfig | Select PrivateIPAddress; Write-Host $Interface $IPs.PrivateIPAddress }
+            Get-azNetworkInterface -ResourceGroupName Rmilne-Tailspintoys-Canada | ForEach { $Interface = $_.Name; $IPs = $_ | Get-azNetworkInterfaceIpConfig | Select PrivateIPAddress; Write-Host $Interface $IPs.PrivateIPAddress }
             
     
             # Get all the network interfaces attached to this VM
             foreach ($NicInterface in $AzureVM.networkprofile.networkinterfaces)
             {
                 # Get the network interface
-                $nic = Get-AzureRmResource -ResourceId $nicInterface.id | Get-AzureRmNetworkInterface
+                $nic = Get-azResource -ResourceId $nicInterface.id | Get-azNetworkInterface
 
                 foreach ($IPConfiguration in $nic.ipconfigurationstext | convertfrom-json)
                 {
@@ -50,7 +50,7 @@ function Get-AzureRMVMIPAddresses
 
                     if ($IPConfiguration.PublicIpAddress -and -not [string]::IsNullOrEmpty($IPConfiguration.PublicIpAddress.id))
                     {
-                        $publicIPAddress = Get-AzureRmResource -ResourceId $IPConfiguration.PublicIpAddress.id | Get-AzureRmPublicIpAddress
+                        $publicIPAddress = Get-azResource -ResourceId $IPConfiguration.PublicIpAddress.id | Get-azPublicIpAddress
 
                         if ($publicIPAddress.IpAddress -ne 'Not Assigned')
                         {

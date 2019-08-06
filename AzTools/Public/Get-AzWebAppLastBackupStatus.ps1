@@ -14,7 +14,7 @@
 .NOTES
     General notes
 #>
-function Get-AzureRMWebAppLastBackupStatus
+function Get-AzWebAppLastBackupStatus
 {
     [CmdletBinding()]
     Param (
@@ -44,7 +44,7 @@ function Get-AzureRMWebAppLastBackupStatus
     begin
     {
         # Temporary storage directory for any log files we need to download
-        $TargetDirectory = "$env:temp\Get-AzureRMWebAppLastBackupStatus_$(Get-random -min 1000 -max 99999)"
+        $TargetDirectory = "$env:temp\Get-azWebAppLastBackupStatus_$(Get-random -min 1000 -max 99999)"
     }
     
     process
@@ -52,9 +52,9 @@ function Get-AzureRMWebAppLastBackupStatus
         Foreach ($Name in $WebSiteName)
         {
             # Get the most recent WebApp backup
-            $WebApp = Get-AzureRmWebApp -Name $Name
+            $WebApp = Get-azWebApp -Name $Name
 
-            $LastBackup = $WebApp | Get-AzureRmWebAppBackuplist | sort finished -desc | select -first 1
+            $LastBackup = $WebApp | Get-azWebAppBackuplist | sort finished -desc | select -first 1
 
             if ($LastBackup -eq $null)
             {
@@ -147,7 +147,7 @@ function Get-AzureRMWebAppLastBackupStatus
                 $ContainerName = $($lastbackup.StorageAccountUrl.split('/')[3].split('?')[0])
 
                 # Our storage directory exists, so download the log and see what went wrong.
-                $StorageAccountKey = Get-AzureRmStorageAccountKey -ResourceGroupName $LastBackup.ResourceGroupName -Name $StorageAccountName
+                $StorageAccountKey = Get-azStorageAccountKey -ResourceGroupName $LastBackup.ResourceGroupName -Name $StorageAccountName
                 $Context = New-AzureStorageContext $StorageAccountName -StorageAccountKey $StorageAccountKey[0].value
 
                 # Download the log file.

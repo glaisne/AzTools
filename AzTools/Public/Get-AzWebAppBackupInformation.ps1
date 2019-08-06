@@ -20,7 +20,7 @@
 .FUNCTIONALITY
     The functionality that best describes this cmdlet
 #>
-function Get-AzureRMWebAppBackupInformation {
+function Get-AzWebAppBackupInformation {
     [CmdletBinding()]
     Param (
         # Param1 help description
@@ -37,9 +37,9 @@ function Get-AzureRMWebAppBackupInformation {
     }
     
     process {
-        Get-AzureRmWebApp -Name $Name | Get-AzureRmWebAppBackupConfiguration
+        Get-azWebApp -Name $Name | Get-azWebAppBackupConfiguration
 
-        Get-AzureRmWebApp -Name $Name | Get-AzureRmWebAppBackupList | sort Finished -desc | select ResourceGroupName, Name, Slot, StorageAccountUrl, blobName, PackupStatus, BackupSizeInBytes, Created, Finished, Log, CorrelationId
+        Get-azWebApp -Name $Name | Get-azWebAppBackupList | sort Finished -desc | select ResourceGroupName, Name, Slot, StorageAccountUrl, blobName, PackupStatus, BackupSizeInBytes, Created, Finished, Log, CorrelationId
     }
     
     end {

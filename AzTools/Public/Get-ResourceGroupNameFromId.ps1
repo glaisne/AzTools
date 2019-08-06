@@ -8,10 +8,11 @@
                 : null;
         }
 #>
-function Get-ResourcegroupNameFromId {
+function Get-ResourcegroupNameFromId
+{
     param (
         [string]
-        idString
+        $idString
     )
 
     $match = [regex]::Match($idString, "resourceGroups/([A-Za-z0-9\-]+)/")
@@ -23,5 +24,4 @@ function Get-ResourcegroupNameFromId {
     {
         $null
     }
-    
 }

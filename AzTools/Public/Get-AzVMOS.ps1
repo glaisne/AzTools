@@ -1,4 +1,4 @@
-Function Get-AzureRMVMOs
+Function Get-azVMOs
 {
     [CmdletBinding()]
     Param

@@ -22,7 +22,7 @@
     # toDo: Remove the inspecting of a group if the user has that role already assigned individually.
 
 #>
-function Get-AzureRMUserAssignedRole
+function Get-AzUserAssignedRole
 {
     [CmdletBinding(DefaultParameterSetName = 'AllSubscriptions')]
     [Alias()]
@@ -64,7 +64,7 @@ function Get-AzureRMUserAssignedRole
         $GuidRegex = "^[{(]?[0-9A-F]{8}[-]?([0-9A-F]{4}[-]?){3}[0-9A-F]{12}[)}]?$"
         $SubscriptionPool = [System.Collections.ArrayList]::new()
 
-        function CreateReturnPSObject ($RoleAssignment, $Username, $RMADUser)
+        function CreateReturnPSObject ($RoleAssignment, $Username, $RMADUser, $SubscriptionName)
         {
             [PSCustomObject] [Ordered] @{
                 UserPrincipalName  = $RMADUser.UserPrincipalName
@@ -75,6 +75,8 @@ function Get-AzureRMUserAssignedRole
                 User               = $RoleAssignment.ObjectType -eq 'User'
                 GroupName          = $(If ($RoleAssignment.ObjectType -eq 'Group') {$RoleAssignment.DisplayName})
                 RoleAssignmentId   = $RoleAssignment.RoleAssignmentId
+                SubscriptionName   = Get-SubscriptionNameFromId -ID $(Get-SubscriptionIdFromId $RoleAssignment.Scope)
+                Scope              = $RoleAssignment.Scope
             }
         }
 
@@ -88,7 +90,7 @@ function Get-AzureRMUserAssignedRole
         {
             'AllSubscriptions'
             {
-                $SubscriptionPool.AddRange(@($(Get-AzureRMSubscription)))
+                $SubscriptionPool.AddRange(@($(Get-azSubscription)))
                 break
             }
             'SubscriptionName'
@@ -98,7 +100,7 @@ function Get-AzureRMUserAssignedRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionName $SubName -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionName $SubName -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -116,7 +118,7 @@ function Get-AzureRMUserAssignedRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionId $SubId -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionId $SubId -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -140,7 +142,7 @@ function Get-AzureRMUserAssignedRole
             Write-Verbose "[$(Get-Date -format G)] Trying to identify user by ObjectId"
             try
             {
-                $RMADUser = Get-azureRMAdUser -ObjectId $Username -ErrorAction Stop
+                $RMADUser = Get-azAdUser -ObjectId $Username -ErrorAction Stop
             }
             catch
             {
@@ -155,7 +157,7 @@ function Get-AzureRMUserAssignedRole
             Write-Verbose "[$(Get-Date -format G)] Trying to identify user by SearchString ($Username)"
             try
             {
-                $RMADUser = Get-azureRMAdUser -SearchString $Username -ErrorAction Stop
+                $RMADUser = Get-azAdUser -SearchString $Username -ErrorAction Stop
             }
             catch
             {
@@ -194,12 +196,12 @@ function Get-AzureRMUserAssignedRole
         
             # Try up to 10 times to swich to the specific subscription
             $TryCount = 0
-            while (-Not $(Test-AzureRMCurrentSubscription -Id $Subscription_Id) -or $TryCount -gt 10)
+            while (-Not $(Test-azCurrentSubscription -Id $Subscription_Id) -or $TryCount -gt 10)
             {
                 try
                 {
                     Write-Verbose "[$(Get-Date -format G)] Attempting to set subscription context (Try $TryCount)"
-                    $null = Select-AzureRmSubscription -SubscriptionId $Subscription_Id -erroraction Stop
+                    $null = Select-azSubscription -SubscriptionId $Subscription_Id -erroraction Stop
                 }
                 catch
                 {
@@ -210,14 +212,14 @@ function Get-AzureRMUserAssignedRole
             }
         
             # Test if we are in the proper subscription context
-            if ($(get-azurermcontext).subscription.id -ne $Subscription_Id)
+            if ($(get-azcontext).subscription.id -ne $Subscription_Id)
             {
-                Write-warning "Failed to set the proper context : ($($(get-azurermcontext).subscription.name))"
+                Write-warning "Failed to set the proper context : ($($(get-azcontext).subscription.name))"
                 continue
             }
             else
             {
-                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azurermcontext).subscription.name)"
+                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azcontext).subscription.name)"
             }
         
 
@@ -232,12 +234,12 @@ function Get-AzureRMUserAssignedRole
             if ($RMADUser -ne $null -and ($RMADUser | measure).count -eq 1)
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for user ID $($RMADUser.Id)"
-                $RoleAssignment = Get-AzureRmRoleAssignment -ObjectId $RMADUser.Id | select $Properties
+                $RoleAssignment = Get-azRoleAssignment -ObjectId $RMADUser.Id | select $Properties
             }
             else
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for User by DisplayName or SignInName ($Username)."
-                $RoleAssignment = Get-AzureRmRoleAssignment |? {$_.displayName -eq "$Username" -or $_.SignInName -like "$Username@*"} | select $Properties
+                $RoleAssignment = Get-azRoleAssignment |? {$_.displayName -eq "$Username" -or $_.SignInName -like "$Username@*"} | select $Properties
             }
 
             # Return our custom object with user and assignment information.
@@ -252,13 +254,13 @@ function Get-AzureRMUserAssignedRole
             #
 
             Write-Verbose "[$(Get-Date -format G)] Checking group memberships..."
-            $GroupAssignments = Get-AzureRmRoleAssignment |? {$_.ObjectType -eq 'Group'}
+            $GroupAssignments = Get-azRoleAssignment |? {$_.ObjectType -eq 'Group'}
             $j = 0
             Foreach ($Group in $GroupAssignments)
             {
                 if ($Group.ObjectId -in $GroupIdsUserIsNotAMemberOf)
                 {
-                    Write-Verbose "We have already checked $(Group.Name), skipping this group for now."
+                    Write-Verbose "We have already checked $($Group.Name), skipping this group for now."
                     Continue
                 }
 
@@ -268,7 +270,7 @@ function Get-AzureRMUserAssignedRole
                 $Role = $Group.RoleDefinitionName
                 Write-Verbose "[$(Get-Date -format G)] Checking Group Role: $Role - Group: $($Group.DisplayName)"
 
-                foreach ($GroupMember in Get-AzureRMADGroupMember -GroupObjectId $Group.ObjectId | sort displayName)
+                foreach ($GroupMember in Get-azADGroupMember -GroupObjectId $Group.ObjectId | sort displayName)
                 {
                     Write-Verbose "[$(Get-Date -format G)]  - Group member: $($GroupMember.displayName)"
                     if ($RMADUser -ne $null -and ($RMADUser | measure).count -eq 1)

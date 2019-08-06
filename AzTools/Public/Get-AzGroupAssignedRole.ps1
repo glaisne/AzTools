@@ -19,7 +19,7 @@
     # ToDo: Add a progress bar for each assignment within a role.
 
 #>
-function Get-AzureRMGroupAssignedRole
+function Get-AzGroupAssignedRole
 {
     [CmdletBinding(DefaultParameterSetName = 'AllSubscriptions')]
     [Alias()]
@@ -81,7 +81,7 @@ function Get-AzureRMGroupAssignedRole
         {
             'AllSubscriptions'
             {
-                $SubscriptionPool.AddRange(@($(Get-AzureRMSubscription)))
+                $SubscriptionPool.AddRange(@($(Get-azSubscription)))
                 break
             }
             'SubscriptionName'
@@ -91,7 +91,7 @@ function Get-AzureRMGroupAssignedRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionName $SubName -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionName $SubName -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -109,7 +109,7 @@ function Get-AzureRMGroupAssignedRole
                 {
                     try
                     {
-                        $Sub = Get-AzureRmSubscription -SubscriptionId $SubId -ErrorAction Stop
+                        $Sub = Get-azSubscription -SubscriptionId $SubId -ErrorAction Stop
                         $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
@@ -133,7 +133,7 @@ function Get-AzureRMGroupAssignedRole
             Write-Verbose "[$(Get-Date -format G)] Trying to identify group by ObjectId"
             try
             {
-                $RMADGroup = Get-azureRmAdGroup -ObjectId $Groupname -ErrorAction Stop
+                $RMADGroup = Get-azAdGroup -ObjectId $Groupname -ErrorAction Stop
             }
             catch
             {
@@ -148,7 +148,7 @@ function Get-AzureRMGroupAssignedRole
             Write-Verbose "[$(Get-Date -format G)] Trying to identify group by SearchString ($Groupname)"
             try
             {
-                $RMADGroup = Get-azureRMAdGroup -DisplayName $Groupname -ErrorAction Stop
+                $RMADGroup = Get-azAdGroup -DisplayName $Groupname -ErrorAction Stop
             }
             catch
             {
@@ -187,12 +187,12 @@ function Get-AzureRMGroupAssignedRole
 
             # Try up to 10 times to swich to the specific subscription
             $TryCount = 0
-            while (-Not $(Test-AzureRMCurrentSubscription -Id $Subscription_Id) -or $TryCount -gt 10)
+            while (-Not $(Test-azCurrentSubscription -Id $Subscription_Id) -or $TryCount -gt 10)
             {
                 try
                 {
                     Write-Verbose "[$(Get-Date -format G)] Attempting to set subscription context (Try $TryCount)"
-                    $null = Select-AzureRmSubscription -SubscriptionId $Subscription_Id -erroraction Stop
+                    $null = Select-azSubscription -SubscriptionId $Subscription_Id -erroraction Stop
                 }
                 catch
                 {
@@ -203,14 +203,14 @@ function Get-AzureRMGroupAssignedRole
             }
 
             # Test if we are in the proper subscription context
-            if ($(get-azurermcontext).subscription.id -ne $Subscription_Id)
+            if ($(get-azcontext).subscription.id -ne $Subscription_Id)
             {
-                Write-warning "Failed to set the proper context : ($($(get-azurermcontext).subscription.name))"
+                Write-warning "Failed to set the proper context : ($($(get-azcontext).subscription.name))"
                 continue
             }
             else
             {
-                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azurermcontext).subscription.name)"
+                Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-azcontext).subscription.name)"
             }
 
 
@@ -225,12 +225,12 @@ function Get-AzureRMGroupAssignedRole
             if ($RMADGroup -ne $null -and ($RMADGroup | measure).count -eq 1)
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for group ID $($RMADGroup.Id)"
-                $RoleAssignment = Get-AzureRmRoleAssignment -ObjectId $RMADGroup.Id | select $Properties
+                $RoleAssignment = Get-azRoleAssignment -ObjectId $RMADGroup.Id | select $Properties
             }
             else
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for Group by DisplayName or SignInName ($Groupname)."
-                $RoleAssignment = Get-AzureRmRoleAssignment |? {$_.displayName -eq "$Groupname" -or $_.SignInName -like "$Groupname@*"} | select $Properties
+                $RoleAssignment = Get-azRoleAssignment |? {$_.displayName -eq "$Groupname" -or $_.SignInName -like "$Groupname@*"} | select $Properties
             }
 
             # Return our custom object with group and assignment information.
@@ -245,7 +245,7 @@ function Get-AzureRMGroupAssignedRole
             #
 
             # Write-Verbose "[$(Get-Date -format G)] Checking group memberships..."
-            # $GroupAssignments = Get-AzureRmRoleAssignment |? {$_.ObjectType -eq 'Group'}
+            # $GroupAssignments = Get-azRoleAssignment |? {$_.ObjectType -eq 'Group'}
             # $j = 0
             # Foreach ($Group in $GroupAssignments)
             # {
@@ -255,7 +255,7 @@ function Get-AzureRMGroupAssignedRole
             #     $Role = $Group.RoleDefinitionName
             #     Write-Verbose "[$(Get-Date -format G)] Checking Group Role: $Role - Group: $($Group.DisplayName)"
 
-            #     foreach ($GroupMember in Get-AzureRMADGroupMember -GroupObjectId $Group.ObjectId | sort displayName)
+            #     foreach ($GroupMember in Get-azADGroupMember -GroupObjectId $Group.ObjectId | sort displayName)
             #     {
             #         Write-Verbose "[$(Get-Date -format G)]  - Group member: $($GroupMember.displayName)"
             #         if ($RMADGroup -ne $null -and ($RMADGroup | measure).count -eq 1)

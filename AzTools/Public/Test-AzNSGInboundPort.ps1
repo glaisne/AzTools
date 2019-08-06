@@ -48,7 +48,7 @@ function Test-AzureNSGInboundPort
                 NetworkInterfaceName = $Nic.name
                 ResourceGroupName    = $Nic.ResourceGroupName
             }
-            $NicEffectiveNetworkSecurityGroup = Get-AzureRmEffectiveNetworkSecurityGroup @param -ErrorAction Stop
+            $NicEffectiveNetworkSecurityGroup = Get-azEffectiveNetworkSecurityGroup @param -ErrorAction Stop
         }
         catch
         {

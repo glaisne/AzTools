@@ -25,7 +25,7 @@
                                                 - Added searching IPAddress on Network Interfaces by Private IP
 #>
 
-function Find-AzureRmResource
+function Find-AzResource
 {
     [CmdletBinding(DefaultParameterSetName = 'ResourceName')]
     [Alias()]
@@ -64,7 +64,7 @@ function Find-AzureRmResource
         $null = $ResourceTypes.Add('Microsoft.Network/networkInterfaces')
         $null = $ResourceTypes.Add('Microsoft.Network/publicIPAddresses')
 
-        Write-Warning "Find-AzureRMResource will only find resources of these types:"
+        Write-Warning "Find-azResource will only find resources of these types:"
         $ResourceTypes | ft -AutoSize | out-string -stream | ? {-not [string]::IsnullOrEmpty($_)} | % {Write-Warning $_}
         Write-Warning "Finding resources by DNSNAme is unproven at this point."
     }
@@ -80,7 +80,7 @@ function Find-AzureRmResource
             Write-Verbose "Getting All accessable subscriptions to search for resoruce in."
             try
             {
-                $Subscriptions = Get-AzureRmSubscription
+                $Subscriptions = Get-azSubscription
                 Write-Verbose "Found $($Subscriptions | measure | % count) Subscriptions to search"
             }
             catch
@@ -101,7 +101,7 @@ function Find-AzureRmResource
                     Write-Verbose "Subscription entry ($Sub) is a Subscription Name"
                     try
                     {
-                        $null = $Subscriptions.Add($(Get-AzureRMSubscription -SubscriptionName $Sub -ErrorAction 'Stop'))
+                        $null = $Subscriptions.Add($(Get-azSubscription -SubscriptionName $Sub -ErrorAction 'Stop'))
                     }
                     catch
                     {
@@ -114,7 +114,7 @@ function Find-AzureRmResource
                     Write-Verbose "Subscription entry ($Sub) is a Subscription ID"
                     try
                     {
-                        $null = $Subscriptions.Add($(Get-AzureRMSubscription -SubscriptionId $Sub -ErrorAction 'Stop'))
+                        $null = $Subscriptions.Add($(Get-azSubscription -SubscriptionId $Sub -ErrorAction 'Stop'))
                     }
                     catch
                     {
@@ -156,11 +156,11 @@ function Find-AzureRmResource
         
             # Try up to 10 times to swich to the specific subscription
             $TryCount = 0
-            while (-Not $(Test-AzureRMCurrentSubscription -Id $SubscriptionId) -or $TryCount -gt 10)
+            while (-Not $(Test-azCurrentSubscription -Id $SubscriptionId) -or $TryCount -gt 10)
             {
                 try
                 {
-                    $null = Select-AzureRmSubscription -SubscriptionId $SubscriptionId -erroraction Stop
+                    $null = Select-azSubscription -SubscriptionId $SubscriptionId -erroraction Stop
                 }
                 catch
                 {
@@ -171,14 +171,14 @@ function Find-AzureRmResource
             }
         
             # Test if we are in the proper subscription context
-            if ($(get-azurermcontext).subscription.id -ne $SubscriptionId)
+            if ($(get-azcontext).subscription.id -ne $SubscriptionId)
             {
-                Write-warning "Failed to set the proper context : ($($(get-azurermcontext).subscription.name))"
+                Write-warning "Failed to set the proper context : ($($(get-azcontext).subscription.name))"
                 continue
             }
 
             Write-Verbose "[$(Get-Date -format G)] Looping through each Resource Group in subscriptoin $SubscriptionName"
-            $ResoruceGroups = Get-AzureRMResourceGroup
+            $ResoruceGroups = Get-azResourceGroup
             $j = 0
             foreach ($ResourceGroup in $ResoruceGroups)
             {
@@ -197,7 +197,7 @@ function Find-AzureRmResource
                 {
                     foreach ($Resource in $ResourceName)
                     {
-                        get-AzureRmResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.Name -like $Resource}
+                        get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.Name -like $Resource}
                     }
                 }
 
@@ -209,7 +209,7 @@ function Find-AzureRmResource
 
                 if ($PSBoundParameters.ContainsKey('IPAddress') -or $PSBoundParameters.ContainsKey('DNSName'))
                 {
-                    $Resources = get-azurermResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.ResourceType -in $ResourceTypes}
+                    $Resources = get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.ResourceType -in $ResourceTypes}
 
                     foreach ($Resource in $Resources)
                     {
@@ -217,7 +217,7 @@ function Find-AzureRmResource
                         {
                             'Microsoft.Network/networkInterfaces'
                             {
-                                $Object = Get-AzureRmNetworkInterface -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
+                                $Object = Get-azNetworkInterface -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
                                 $IP = Get-NetworkInterfacePrivateIp -NetworkInterface $Object
                                 if ($PSBoundParameters.ContainsKey('IPAddress'))
                                 {
@@ -238,7 +238,7 @@ function Find-AzureRmResource
                             }
                             'Microsoft.Network/publicIPAddresses'
                             {
-                                $Object = Get-AzureRmPublicIpAddress -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
+                                $Object = Get-azPublicIpAddress -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
                                 $IP = Get-PublicIPAddressPublicIP -PublicIPAddress $Object
                                 
                                 if ($PSBoundParameters.ContainsKey('IPAddress'))

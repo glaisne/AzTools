@@ -1,8 +1,9 @@
 <#
 .Synopsis
-Short description
+Gets the cost of the resource over the course of the last number of days specified by the Days parameter
 .DESCRIPTION
-Long description
+This script the the total cost of a given resource over the last specified number of days. The default
+number of days is 30.
 .EXAMPLE
 Example of how to use this cmdlet
 .EXAMPLE

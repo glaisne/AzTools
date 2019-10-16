@@ -27,5 +27,4 @@ function Find-AzUnusedApplicationGateway
             return $AppGateway
         }
     }
-
 }

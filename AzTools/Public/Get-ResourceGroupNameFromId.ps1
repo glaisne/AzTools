@@ -10,18 +10,27 @@
 #>
 function Get-ResourcegroupNameFromId
 {
-    param (
+    param(
+        [Parameter(Mandatory = $true,
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [alias("StringId", "ResourceId")]
         [string]
-        $idString
+        $id
     )
+    
+    process
+    {
 
-    $match = [regex]::Match($idString, "resourceGroups/([A-Za-z0-9\-]+)/")
-    if ($match.Success)
-    {
-        $match.groups[1].value
-    }
-    else
-    {
-        $null
+        $match = [regex]::Match($id, "resourceGroups/([A-Za-z0-9\-]+)/?")
+        if ($match.Success)
+        {
+            $match.groups[1].value
+        }
+        else
+        {
+            $null
+        }
+        
     }
 }

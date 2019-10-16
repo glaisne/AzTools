@@ -1,4 +1,4 @@
-#Requires -Version 5
+#Requires -Version 6
 
 <#
 .SYNOPSIS
@@ -135,6 +135,7 @@ function Get-AzUserAssignedRole
 
         $RMADUser = $null
 
+        # See if the username passed in is an ObjectId for a user.
         if ($username.trim() -match $GuidRegex)
         {
             # This is a GUID and so we assume it is an ObjectId
@@ -166,11 +167,18 @@ function Get-AzUserAssignedRole
             }
         }
 
+        # if we still haven't found the user, write a warning
         if ($RMADUser -eq $null)
         {
             Write-Warning "Failed to access user ($username) in Azure AD. Continuing, but results may be incomplete."
         }
 
+
+        #
+        #    Loop through each subscription looking for the user
+        #
+        
+        
         $i = 0
         foreach ($subscription in $SubscriptionPool)
         {

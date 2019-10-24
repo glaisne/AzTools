@@ -7,18 +7,8 @@
     Example of how to use this cmdlet
 .EXAMPLE
     Another example of how to use this cmdlet
-.INPUTS
-    Inputs to this cmdlet (if any)
-.OUTPUTS
-    Output from this cmdlet (if any)
 .NOTES
     General notes
-.COMPONENT
-    The component this cmdlet belongs to
-.ROLE
-    The role this cmdlet belongs to
-.FUNCTIONALITY
-    The functionality that best describes this cmdlet
 #>
 function Get-AzRbacRole
 {
@@ -50,11 +40,30 @@ function Get-AzRbacRole
         # Param3 help description
         [Parameter(ParameterSetName = 'SubscriptionId')]
         [String[]]
-        $SubscriptionId
+        $SubscriptionId,
+
+        [parameter(Mandatory = $False)]
+        [ValidateSet("Assignments", "UsersOnly", "AssignmentsWithGroupMembers")]
+        [string]
+        $ResultOptions
     )
     
     begin
     {
+        function NewReturnObject
+        {
+            [PSCustomObject][Ordered]@{
+                SubscriptionId    = [string]::Empty
+                SubscriptionName  = [string]::Empty
+                Role              = [string]::Empty
+                Type              = [string]::Empty
+                UserPrincipalName = [string]::Empty
+                DisplayName       = [string]::Empty
+                Id                = [string]::Empty
+                MemberOf          = [string]::Empty
+            }
+            
+        }
     }
     
     process
@@ -105,7 +114,7 @@ function Get-AzRbacRole
                 $SubscriptionPool = $SubscriptionPool.ToArray()
                 break
             }
-            Default { Throw 'could not find parameter name set.'}
+            Default { Throw 'could not find parameter name set.' }
         }
 
         foreach ($Subscription in $SubscriptionPool)
@@ -155,18 +164,92 @@ function Get-AzRbacRole
             #
 
             Write-Verbose "[$(Get-Date -format G)] Getting RBAC permissions for the role $RoleName under subscription $SubscriptionName"
+            $Assignments = $null
             try
             {
                 $Param1 = @{
                     RoleDefinitionName = $RoleName
-                    Scope              = "/subscriptions/$SubscriptionID"
                 }
-                Get-azRoleAssignment @Param1 -ErrorAction 'Stop' | select *, @{'Name' = 'SubscriptionName' ; 'Expression' = {$SubscriptionName}}
+                $Assignments = Get-azRoleAssignment @Param1 -ErrorAction 'Stop'
             }
             catch
             {
                 $err = $_
                 Write-Warning "Failed to get Role Assignment ($RoleName) in subscription $($SubscriptionName) : $($Err.exection.Message)"
+            }
+
+            foreach ($Assignment in $Assignments)
+            {
+                switch ($Assignment.ObjectType)
+                {
+                    'group'
+                    {
+                        if ($ResultOptions -match "(^Assignments$|^AssignmentsWithGroupMembers%)")
+                        {
+                            $Group = Get-azAdGroup -ObjectId $Assignment.ObjectId 
+
+                            $Return = NewReturnObject
+                            $Return.SubscriptionName = $SubscriptionName
+                            $Return.SubscriptionId   = $SubscriptionId
+                            $Return.Role              = $Assignment.RoleDefinitionName
+                            $Return.Type             = $Assignment.ObjectType
+                            $Return.DisplayName      = $Group.DisplayName
+                            $Return.Id               = $Group.Id
+                            $Return
+                        }
+
+                        if ($ResultOptions -match "(^UsersOnly$|^AssignmentsWithGroupMembers%)")
+                        {
+                            # Get the members of the group
+                            foreach ($User in Get-azADGroupMember -GroupObjectId $Assignment.ObjectId | sort displayName)
+                            {
+                                $Return = NewReturnObject
+                                $Return.SubscriptionId    = $SubscriptionId
+                                $Return.SubscriptionName  = $SubscriptionName
+                                $Return.Role              = $Assignment.RoleDefinitionName
+                                $Return.Type              = 'User'
+                                $Return.UserPrincipalName = $User.userPrincipalName
+                                $Return.DisplayName       = $User.DisplayName
+                                $Return.Id                = $User.Id
+                                $Return.memberOf          = $Assignment.DisplayName
+                                $Return
+                            }
+                        }
+                    }
+                    'User'
+                    {
+                        $User = Get-AzADUser -ObjectId $Assignment.ObjectId | select Type, UserPrincipalName, DisplayName, Id
+                        
+                        $Return = NewReturnObject
+                        $Return.SubscriptionId    = $SubscriptionId
+                        $Return.SubscriptionName  = $SubscriptionName
+                        $Return.Role              = $Assignment.RoleDefinitionName
+                        $Return.Type              = $Assignment.ObjectType
+                        $Return.UserPrincipalName = $User.userPrincipalName
+                        $Return.DisplayName       = $User.DisplayName
+                        $Return.Id                = $User.Id
+                        $Return
+                    }
+                    'ServicePrincipal'
+                    {
+                        $ServicePrincipalName = Get-AzADServicePrincipal -ObjectId $Assignment.ObjectId
+                        
+                        $Return = NewReturnObject
+                        $Return.SubscriptionId    = $SubscriptionId
+                        $Return.SubscriptionName  = $SubscriptionName
+                        $Return.Role              = $Assignment.RoleDefinitionName
+                        $Return.Type              = $Assignment.ObjectType
+                        $Return.UserPrincipalName = $ServicePrincipalName.userPrincipalName
+                        $Return.DisplayName       = $ServicePrincipalName.DisplayName
+                        $Return.Id                = $ServicePrincipalName.Id
+                        $Return.memberOf          = $Assignment.DisplayName
+                        $Return
+                    }
+                    Default 
+                    {
+                        $Assignment
+                    }
+                }
             }
         }
     }

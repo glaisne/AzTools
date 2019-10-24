@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    finds a users Assignment Role in an Azure Subscription (at the subscription level).
+    finds a group's Assignment Role in an Azure Subscription (at the subscription level).
 .DESCRIPTION
     Long description
 .EXAMPLE
@@ -25,9 +25,25 @@ function Get-AzGroupAssignedRole
     [Alias()]
     [OutputType([PSCustomObject])]
     Param (
-        # Param1 help description
+
+        [Parameter(Position = 0,
+            ParameterSetName = 'AllSubscriptions')]
+        [Alias("All")]
+        [switch]
+        $AllSubscriptions,
+
+        [Parameter(Position = 0,
+        ParameterSetName = 'SubscriptionName')]
+        [String[]]
+        $SubscriptionName,
+
+        [Parameter(Position = 0,
+        ParameterSetName = 'SubscriptionId')]
+        [String[]]
+        $SubscriptionId,
+        
         [Parameter(Mandatory = $true,
-            Position = 0,
+            Position = 1,
             ValueFromPipeline = $true,
             ValueFromPipelineByPropertyName = $true,
             ValueFromRemainingArguments = $false)]
@@ -35,25 +51,7 @@ function Get-AzGroupAssignedRole
         [ValidateNotNullOrEmpty()]
         [Alias("Group", "ObjectId")]
         [string]
-        $Groupname,
-
-        # Param2 help description
-        [Parameter(Mandatory = $true,
-            Position = 0,
-            ParameterSetName = 'AllSubscriptions')]
-        [Alias("All")]
-        [switch]
-        $AllSubscriptions,
-
-        # Param3 help description
-        [Parameter(ParameterSetName = 'SubscriptionName')]
-        [String[]]
-        $SubscriptionName,
-
-        # Param3 help description
-        [Parameter(ParameterSetName = 'SubscriptionId')]
-        [String[]]
-        $SubscriptionId
+        $Groupname
     )
 
     begin
@@ -81,7 +79,15 @@ function Get-AzGroupAssignedRole
         {
             'AllSubscriptions'
             {
-                $SubscriptionPool.AddRange(@($(Get-azSubscription)))
+                try
+                {
+                    $SubscriptionPool.AddRange(@($(Get-azSubscription -ErrorAction 'Stop')))
+                }
+                catch
+                {
+                    $err = $_
+                    Write-Warning "Failed to access any Subscriptions : $($err.exception.Message)"
+                }
                 break
             }
             'SubscriptionName'
@@ -121,7 +127,7 @@ function Get-AzGroupAssignedRole
                 $SubscriptionPool = $SubscriptionPool.ToArray()
                 break
             }
-            Default { Throw 'could not find parameter name set.'}
+            Default { Throw 'could not find parameter name set.' }
         }
 
         $RMADGroup = $null
@@ -203,7 +209,7 @@ function Get-AzGroupAssignedRole
             }
 
             # Test if we are in the proper subscription context
-            if ($(get-azcontext).subscription.id -ne $Subscription_Id)
+            if (-Not $(Test-azCurrentSubscription -Id $Subscription_Id))
             {
                 Write-warning "Failed to set the proper context : ($($(get-azcontext).subscription.name))"
                 continue
@@ -230,7 +236,7 @@ function Get-AzGroupAssignedRole
             else
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for Group by DisplayName or SignInName ($Groupname)."
-                $RoleAssignment = Get-azRoleAssignment |? {$_.displayName -eq "$Groupname" -or $_.SignInName -like "$Groupname@*"} | select $Properties
+                $RoleAssignment = Get-azRoleAssignment | ? { $_.displayName -eq "$Groupname" -or $_.SignInName -like "$Groupname@*" } | select $Properties
             }
 
             # Return our custom object with group and assignment information.

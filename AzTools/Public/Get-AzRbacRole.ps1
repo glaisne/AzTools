@@ -45,7 +45,7 @@ function Get-AzRbacRole
         [parameter(Mandatory = $False)]
         [ValidateSet("Assignments", "UsersOnly", "AssignmentsWithGroupMembers")]
         [string]
-        $ResultOptions
+        $ResultOptions = 'AssignmentsWithGroupMembers'
     )
     
     begin
@@ -247,7 +247,15 @@ function Get-AzRbacRole
                     }
                     Default 
                     {
-                        $Assignment
+                        $Return = NewReturnObject
+                        $Return.SubscriptionId    = $SubscriptionId
+                        $Return.SubscriptionName  = $SubscriptionName
+                        $Return.Role              = $Assignment.RoleDefinitionName
+                        $Return.Type              = $Assignment.ObjectType
+                        $Return.UserPrincipalName = $Assignment.SignInName
+                        $Return.DisplayName       = $Assignment.DisplayName
+                        $Return.Id                = $Assignment.ObjectId
+                        $Return
                     }
                 }
             }

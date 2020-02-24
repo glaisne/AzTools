@@ -47,10 +47,21 @@ function Get-AzSubscriptionBillingInfo
         $DateStamp = $BillingPeriodName.Insert(4, '-')
         foreach ($InstanceInfo in $InstanceInfoGroup)
         {
+            $ResourceGroupName = [string]::Empty
+            try
+            {
+                $ResourceGroupName = Get-ResourcegroupNameFromId -id $InstanceInfo.group[0].InstanceId -ErrorAction Stop
+            }
+            catch
+            {
+                $err = $_
+                Write-Warning "Failed to get ResourceGroupName from resource with Id $($InstanceInfo.group[0]) : $($_.exception.message)"
+            }
+
             [PSCustomObject][Ordered] @{
                 Date              = $DateStamp
                 Subscription      = $SubscriptionName
-                ResourceGroupName = (Get-ResourcegroupNameFromId -idString $InstanceInfo.group[0].InstanceId)
+                ResourceGroupName = $ResourceGroupName
                 Resource          = $InstanceInfo.group.InstanceName | select -Unique
                 ResourceType      = $InstanceInfo.group.ConsumedService | select -Unique
                 ResourceLocation  = $InstanceInfo.group.InstanceLocation | select -Unique

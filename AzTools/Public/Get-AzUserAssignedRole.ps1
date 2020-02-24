@@ -19,7 +19,6 @@
 
     # ToDo: Make it so $Username can take an array of usernames from the pipeline.
     # ToDo: Add a progress bar for each assignment within a role.
-    # toDo: Remove the inspecting of a group if the user has that role already assigned individually.
 
 #>
 function Get-AzUserAssignedRole
@@ -28,7 +27,7 @@ function Get-AzUserAssignedRole
     [Alias()]
     [OutputType([PSCustomObject])]
     Param (
-        # Param1 help description
+        # The username field can be the Azure AD ObjectId, DisplayName of a search string for the DisplayName field or the user principal name.
         [Parameter(Mandatory = $true,
             Position = 0,
             ValueFromPipeline = $true,
@@ -40,7 +39,7 @@ function Get-AzUserAssignedRole
         [string]
         $Username,
         
-        # Param2 help description
+        # Use this switch to search all accessable subscriptions.
         [Parameter(Mandatory = $true,
             Position = 0,
             ParameterSetName = 'AllSubscriptions')]
@@ -48,12 +47,12 @@ function Get-AzUserAssignedRole
         [switch]
         $AllSubscriptions,
         
-        # Param3 help description
+        # A single subscription name or an array of subscription names
         [Parameter(ParameterSetName = 'SubscriptionName')]
         [String[]]
         $SubscriptionName,
         
-        # Param3 help description
+        # A single subscription id or an array of subscription names
         [Parameter(ParameterSetName = 'SubscriptionId')]
         [String[]]
         $SubscriptionId
@@ -66,7 +65,7 @@ function Get-AzUserAssignedRole
 
         function CreateReturnPSObject ($RoleAssignment, $Username, $RMADUser, $SubscriptionName)
         {
-            [PSCustomObject] [Ordered] @{
+            $Object = [PSCustomObject] [Ordered] @{
                 UserPrincipalName  = $RMADUser.UserPrincipalName
                 DisplayName        = $RMADUser.DisplayName
                 Name               = $Username    
@@ -75,12 +74,24 @@ function Get-AzUserAssignedRole
                 User               = $RoleAssignment.ObjectType -eq 'User'
                 GroupName          = $(If ($RoleAssignment.ObjectType -eq 'Group') {$RoleAssignment.DisplayName})
                 RoleAssignmentId   = $RoleAssignment.RoleAssignmentId
-                SubscriptionName   = Get-SubscriptionNameFromId -ID $(Get-SubscriptionIdFromId $RoleAssignment.Scope)
+                SubscriptionName   = [string]::empty 
                 Scope              = $RoleAssignment.Scope
+            }
+
+            if ($RoleAssignment -and $RoleAssignment.Scope)
+            {
+                $Object.SubscriptionName = Get-SubscriptionNameFromId -ID $(Get-SubscriptionIdFromId -id $RoleAssignment.Scope)
+                $Object
+            }
+            else
+            {
+                Write-Warning "CreateReturnPSObject: RoleAssignment scope is invalid"
+                $RoleAssignment | fl * -force | out-string -stream |? {-not [string]::isnullOrEmpty($_)} | % {Write-Warning "    $_"}
             }
         }
 
         $GroupIdsUserIsNotAMemberOf = [System.Collections.ArrayList]::new()
+        $GroupIdsUserIsAMemberOf = [System.Collections.ArrayList]::new()
     }
     
     process
@@ -167,8 +178,38 @@ function Get-AzUserAssignedRole
             }
         }
 
+        # Try UPN
+        if ($RMADUser -eq $null -or ($RMADUser | measure).count -gt 1)
+        {
+            Write-Verbose "[$(Get-Date -format G)] Trying to identify user by UserPrincipalName ($Username)"
+            try
+            {
+                $RMADUser = Get-azAdUser -UserPrincipalName $Username -ErrorAction Stop
+            }
+            catch
+            {
+                $err = $_
+                Write-Warning "Failed attempting to access RM AD User with UserPrincipalName : $($err.exception.message)"
+            }
+        }
+
+        # Try DisplayName
+        if ($RMADUser -eq $null -or ($RMADUser | measure).count -gt 1)
+        {
+            Write-Verbose "[$(Get-Date -format G)] Trying to identify user by DisplayName ($Username)"
+            try
+            {
+                $RMADUser = Get-azAdUser -DisplayName $Username -ErrorAction Stop
+            }
+            catch
+            {
+                $err = $_
+                Write-Warning "Failed attempting to access RM AD User with DisplayName : $($err.exception.message)"
+            }
+        }
+
         # if we still haven't found the user, write a warning
-        if ($RMADUser -eq $null)
+        if ($RMADUser -eq $null -or ($RMADUser | measure).count -gt 1)
         {
             Write-Warning "Failed to access user ($username) in Azure AD. Continuing, but results may be incomplete."
         }
@@ -253,7 +294,7 @@ function Get-AzUserAssignedRole
             # Return our custom object with user and assignment information.
             if ($RoleAssignment -ne $null)
             {
-                CreateReturnPSObject -RoleAssignment $Group -Username $Username -RMADUser $RMADUser
+                CreateReturnPSObject -RoleAssignment $RoleAssignment -Username $Username -RMADUser $RMADUser
             }
 
             
@@ -268,7 +309,14 @@ function Get-AzUserAssignedRole
             {
                 if ($Group.ObjectId -in $GroupIdsUserIsNotAMemberOf)
                 {
-                    Write-Verbose "We have already checked $($Group.Name), skipping this group for now."
+                    Write-Verbose "[$(Get-Date -format G)] We already know the user is NOT a member of this group: '$($Group.DisplayName).'"
+                    Continue
+                }
+
+                if ($Group.ObjectId -in $GroupIdsUserIsAMemberOf)
+                {
+                    Write-Verbose "[$(Get-Date -format G)] We already know the user is a member of this group: '$($Group.DisplayName).'"
+                    CreateReturnPSObject -RoleAssignment $Group -Username $Username -RMADUser $RMADUser
                     Continue
                 }
 
@@ -276,11 +324,12 @@ function Get-AzUserAssignedRole
                 Write-Progress -Id 1 -Activity "Processing Group assignment $($Group.DisplayName)`..." -Status "$PrecentComplete %" -PercentComplete $PrecentComplete
 
                 $Role = $Group.RoleDefinitionName
-                Write-Verbose "[$(Get-Date -format G)] Checking Group Role: $Role - Group: $($Group.DisplayName)"
+                Write-Verbose "[$(Get-Date -format G)] Checking Group - Role: '$Role' - Group: '$($Group.DisplayName)'"
 
+                $UserFoundInGroup = $False
                 foreach ($GroupMember in Get-azADGroupMember -GroupObjectId $Group.ObjectId | sort displayName)
                 {
-                    Write-Verbose "[$(Get-Date -format G)]  - Group member: $($GroupMember.displayName)"
+                    Write-Verbose "[$(Get-Date -format G)]  - Group member: '$($GroupMember.displayName)'"
                     if ($RMADUser -ne $null -and ($RMADUser | measure).count -eq 1)
                     {
                         if ($GroupMember.id -eq $RMADUser.Id)
@@ -288,7 +337,8 @@ function Get-AzUserAssignedRole
                             #Write-Verbose "[$(Get-Date -format G)]    - $($GroupMember.id) -eq $($RMADUser.Id)"
                             #$Group
                             CreateReturnPSObject -RoleAssignment $Group -Username $Username -RMADUser $RMADUser
-                            $null = $GroupIdsUserIsNotAMemberOf.Add($Group.ObjectId)
+                            $UserFoundInGroup = $True
+                            #$null = $GroupIdsUserIsNotAMemberOf.Add($Group.ObjectId)
                             break
                         }
                         else 
@@ -303,10 +353,20 @@ function Get-AzUserAssignedRole
                         {
                             #$Group
                             CreateReturnPSObject -RoleAssignment $Group -Username $Username -RMADUser $RMADUser
-                            $null = $GroupIdsUserIsNotAMemberOf.Add($Group.ObjectId)
+                            $UserFoundInGroup = $True
                             break
                         }
                     }
+                }
+
+                if ($UserFoundInGroup)
+                {
+                    Write-Verbose "[$(Get-Date -format G)] We already know the user is NOT a member of this group: '$($Group.DisplayName).'"
+                    $null = $GroupIdsUserIsAMemberOf.Add($Group.ObjectId)
+                }
+                else
+                {
+                    $null = $GroupIdsUserIsNotAMemberOf.Add($Group.ObjectId)
                 }
 
                 $j++

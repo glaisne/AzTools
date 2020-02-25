@@ -75,12 +75,23 @@ function Get-AzUserAssignedRole
                 GroupName          = $(If ($RoleAssignment.ObjectType -eq 'Group') {$RoleAssignment.DisplayName})
                 RoleAssignmentId   = $RoleAssignment.RoleAssignmentId
                 SubscriptionName   = [string]::empty 
-                Scope              = $RoleAssignment.Scope
+                Scope              = $RoleAssignment.Scope.trim()
             }
 
-            if ($RoleAssignment -and $RoleAssignment.Scope)
+            if ($RoleAssignment -and $RoleAssignment.Scope -and -not [string]::IsNullOrEmpty($RoleAssignment.Scope.trim()))
             {
-                $Object.SubscriptionName = Get-SubscriptionNameFromId -ID $(Get-SubscriptionIdFromId -id $RoleAssignment.Scope)
+                try
+                {
+                    $SubscriptionId = Get-SubscriptionIdFromId -idString $RoleAssignment.Scope.trim() -errorAction 'Stop'
+                    $Object.SubscriptionName = Get-SubscriptionNameFromId -ID $SubscriptionId -errorAction 'Stop'
+                }
+                catch
+                {
+                    $Err = $_
+                    Write-Warning "Failed to set SubscriptionName on return object."
+                    $RoleAssignment |fl * -force | out-string -stream | ? {-not [string]::IsNullOrEmpty($_)} | % {Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$RoleAssignment: $_" }
+                    $Object |fl * -force | out-string -stream | ? {-not [string]::IsNullOrEmpty($_)} | % {Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$Object: $_" }
+                }
                 $Object
             }
             else

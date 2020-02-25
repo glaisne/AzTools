@@ -22,7 +22,7 @@ function Get-ResourcegroupNameFromId
     process
     {
 
-        $match = [regex]::Match($id, "resourceGroups/([A-Za-z0-9\-]+)/?")
+        $match = [regex]::Match($id, "resourceGroups/([A-Za-z0-9\-]+)/?", [system.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if ($match.Success)
         {
             $match.groups[1].value

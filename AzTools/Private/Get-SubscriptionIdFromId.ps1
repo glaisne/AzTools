@@ -14,7 +14,7 @@ function Get-SubscriptionIdFromId {
         $idString
     )
 
-    $match = [regex]::Match($idString, "subscriptions/([A-Fa-f0-9\-]+)")
+    $match = [regex]::Match($idString, "subscriptions/([A-Fa-f0-9\-]+)", [system.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if ($match.Success)
     {
         $match.groups[1].value

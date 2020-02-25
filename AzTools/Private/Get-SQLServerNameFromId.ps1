@@ -13,7 +13,7 @@ function Get-SQLServerNameFromId
     process
     {
 
-        $match = [regex]::Match($id, "Microsoft.Sql/servers/([A-Za-z0-9\-]+)/?")
+        $match = [regex]::Match($id, "Microsoft.Sql/servers/([A-Za-z0-9\-]+)/?", [system.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if ($match.Success)
         {
             $match.groups[1].value

@@ -27,35 +27,84 @@
 
 function Find-AzResource
 {
-    [CmdletBinding(DefaultParameterSetName = 'ResourceName')]
+    [CmdletBinding(DefaultParameterSetName = 'AllSubscriptionsResourceName')]
     [Alias()]
     [OutputType([OutputType])]
     Param
     (
         # Param1 help description
         [Parameter(Mandatory = $true, 
-            ParameterSetName = 'ResourceName',
+            ParameterSetName = 'AllSubscriptionsResourceName',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionNameResourceName',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionIdResourceName',
             ValueFromPipelineByPropertyName = $true,
             Position = 0)]
         [string[]]
         $ResourceName,
 
         [Parameter(Mandatory = $true, 
-            ParameterSetName = 'ResourceIPAddress',
+            ParameterSetName = 'AllSubscriptionsResourceIPAddress',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionNameResourceIPAddress',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionIdResourceIPAddress',
             ValueFromPipelineByPropertyName = $true,
             Position = 0)]
         [string[]]
         $IPAddress,
 
         [Parameter(Mandatory = $true, 
-            ParameterSetName = 'ResourceDNSName',
+            ParameterSetName = 'AllSubscriptionsResourceDNSName',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionNameResourceDNSName',
+            ValueFromPipelineByPropertyName = $true,
+            Position = 0)]
+        [Parameter(Mandatory = $true, 
+            ParameterSetName = 'SubscriptionIdResourceDNSName',
             ValueFromPipelineByPropertyName = $true,
             Position = 0)]
         [string[]]
         $DNSName,
 
-        [string[]]
-        $Subscription
+        [Parameter(Position = 0,
+            ParameterSetName = 'AllSubscriptionsResourceName')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'AllSubscriptionsResourceIPAddress')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'AllSubscriptionsResourceDNSName')]
+        [Alias("All")]
+        [switch]
+        $AllSubscriptions,
+
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionNameResourceName')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionNameResourceIPAddress')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionNameResourceDNSName')]
+        [String[]]
+        $SubscriptionName,
+
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionIdResourceName')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionIdResourceIPAddress')]
+        [Parameter(Position = 0,
+            ParameterSetName = 'SubscriptionIdResourceDNSName')]
+        [String[]]
+        $SubscriptionId
     )
 
     Begin
@@ -63,10 +112,28 @@ function Find-AzResource
         $ResourceTypes = [System.Collections.ArrayList]::new()
         $null = $ResourceTypes.Add('Microsoft.Network/networkInterfaces')
         $null = $ResourceTypes.Add('Microsoft.Network/publicIPAddresses')
+        $null = $ResourceTypes.Add('Microsoft.Web/sites')
+        $null = $ResourceTypes.Add('Microsoft.Network/localNetworkGateways')
+        $null = $ResourceTypes.Add('Microsoft.Storage/storageAccounts')
+        $null = $ResourceTypes.Add('Microsoft.Sql/servers')
+        $null = $ResourceTypes.Add('Microsoft.KeyVault/vaults')
+
+        $PubicIPUsableResources = [System.Collections.ArrayList]::new()
+        $null = $PubicIPUsableResources.Add('Microsoft.Network/virtualNetworkGateways')  #
+        $null = $PubicIPUsableResources.Add('Microsoft.Network/loadBalancers')
+        $null = $PubicIPUsableResources.Add('Microsoft.Network/networkInterfaces')   # 
+        $null = $PubicIPUsableResources.Add('Microsoft.Network/applicationGateways')
+        $null = $PubicIPUsableResources.Add('Microsoft.Network/azureFirewalls')
 
         Write-Warning "Find-azResource will only find resources of these types:"
-        $ResourceTypes | ft -AutoSize | out-string -stream | ? {-not [string]::IsnullOrEmpty($_)} | % {Write-Warning $_}
-        Write-Warning "Finding resources by DNSNAme is unproven at this point."
+        $ResourceTypes | ft -AutoSize | out-string -stream | ? { -not [string]::IsnullOrEmpty($_) } | % { Write-Warning $_ }
+        Write-Warning "Finding resources by DNSName is unproven at this point."
+
+        Write-verbose "Note: Public IP Addresses will be used with the following resoruce types:"
+        foreach ($entry in $PubicIPUsableResources)
+        {
+
+        }
     }
     Process
     {
@@ -75,54 +142,61 @@ function Find-AzResource
         #
 
 
-        if ($Subscription -eq 'All' -or [string]::IsNullOrEmpty($Subscription))
+        Write-Verbose "[$(Get-Date -format G)] Getting Subscriptions"
+        $SubscriptionPool = [System.Collections.ArrayList]::new()
+        switch -Regex ($PSCmdlet.ParameterSetName)
         {
-            Write-Verbose "Getting All accessable subscriptions to search for resoruce in."
-            try
+            'AllSubscriptions.*'
             {
-                $Subscriptions = Get-azSubscription
-                Write-Verbose "Found $($Subscriptions | measure | % count) Subscriptions to search"
+                try
+                {
+                    $SubscriptionPool.AddRange(@($(Get-azSubscription -ErrorAction 'Stop' | ? {$_.State -ne 'disabled'})))
+                }
+                catch
+                {
+                    $err = $_
+                    Write-Warning "Failed to access any Subscriptions : $($err.exception.Message)"
+                }
+                break
             }
-            catch
+            'SubscriptionName.*'
             {
-                $err = $_
-                Throw $err
-            }
-        }
-        else
-        {
-            Write-Verbose "Subscription is a specific list."
-            $Subscriptions = [System.Collections.ArrayList]::new()
 
-            foreach ($Sub in $Subscription)
-            {
-                if ($Sub -notmatch "^[{(]?[0-9A-F]{8}[-]?([0-9A-F]{4}[-]?){3}[0-9A-F]{12}[)}]?$")
+                foreach ($SubName in $SubscriptionName)
                 {
-                    Write-Verbose "Subscription entry ($Sub) is a Subscription Name"
                     try
                     {
-                        $null = $Subscriptions.Add($(Get-azSubscription -SubscriptionName $Sub -ErrorAction 'Stop'))
+                        $Sub = Get-azSubscription -SubscriptionName $SubName -ErrorAction Stop
+                        $null = $SubscriptionPool.Add($Sub)
                     }
                     catch
                     {
-                        $Err = $_
-                        Write-Warning "Failed to access subscriptoin $Sub : $($Err.Exception.Message)"
+                        $err = $_
+                        Write-Warning "Failed to access Subscription ($SubName) : $($err.exception.Message)"
                     }
                 }
-                else
-                {
-                    Write-Verbose "Subscription entry ($Sub) is a Subscription ID"
-                    try
-                    {
-                        $null = $Subscriptions.Add($(Get-azSubscription -SubscriptionId $Sub -ErrorAction 'Stop'))
-                    }
-                    catch
-                    {
-                        $Err = $_
-                        Write-Warning "Failed to access subscriptoin $Sub : $($Err.Exception.Message)"
-                    }
-                }
+                $SubscriptionPool = $SubscriptionPool.ToArray()
+                break
             }
+            'SubscriptionId.*'
+            {
+                foreach ($SubId in $SubscriptionId)
+                {
+                    try
+                    {
+                        $Sub = Get-azSubscription -SubscriptionId $SubId -ErrorAction Stop
+                        $null = $SubscriptionPool.Add($Sub)
+                    }
+                    catch
+                    {
+                        $err = $_
+                        Write-Warning "Failed to access Subscription ($SubId) : $($err.exception.Message)"
+                    }
+                }
+                $SubscriptionPool = $SubscriptionPool.ToArray()
+                break
+            }
+            Default { Throw 'could not find parameter name set.' }
         }
 
 
@@ -132,11 +206,11 @@ function Find-AzResource
 
 
         $i = 0
-        foreach ($Sub in $Subscriptions)
+        :subloop foreach ($Sub in $SubscriptionPool)
         {
             Write-Verbose "Searching Subscription $($Sub.Name) : $($Sub.Id)"
 
-            $PrecentComplete = $([math]::round($($i / $Subscriptions.count * 100), 2))
+            $PrecentComplete = $([math]::round($($i / $SubscriptionPool.count * 100), 2))
             Write-Progress -Id 0 -Activity "Processing Subscription $($Sub.Name)`..." -Status "$PrecentComplete %" -PercentComplete $PrecentComplete
         
         
@@ -148,6 +222,11 @@ function Find-AzResource
             # Get Subscription information
             $SubscriptionName = $Sub.Name
             $SubscriptionId = $Sub.Id
+
+            if ($SubscriptionId.gettype().fullname -eq 'System.String[]')
+            {
+                $SubscriptionId = $SubscriptionId[0]
+            }
         
             if ($SubscriptionName -in $SubscriptionExclusionList)
             {
@@ -156,16 +235,16 @@ function Find-AzResource
         
             # Try up to 10 times to swich to the specific subscription
             $TryCount = 0
-            while (-Not $(Test-azCurrentSubscription -Id $SubscriptionId) -or $TryCount -gt 10)
+            while (-Not $(Test-azCurrentSubscription -Id ([string] $SubscriptionId)) -or $TryCount -gt 10)
             {
                 try
                 {
-                    $null = Select-azSubscription -SubscriptionId $SubscriptionId -erroraction Stop
+                    $null = Select-azSubscription -SubscriptionId ([string] $SubscriptionId) -erroraction Stop
                 }
                 catch
                 {
                     $err = $_
-                    Write-Warning "Failed to select Azure RM Subscription by subscriptionName $Sub : $($err.exception.message)"
+                    Write-Warning "Failed to select Azure RM Subscription by SubscriptionId $SubscriptionId : $($err.exception.message)"
                 }
                 $TryCount++
             }
@@ -197,7 +276,7 @@ function Find-AzResource
                 {
                     foreach ($Resource in $ResourceName)
                     {
-                        get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.Name -like $Resource}
+                        get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName | ? { $_.Name -like $Resource }
                     }
                 }
 
@@ -207,59 +286,78 @@ function Find-AzResource
                 #
 
 
-                if ($PSBoundParameters.ContainsKey('IPAddress') -or $PSBoundParameters.ContainsKey('DNSName'))
+                if ($PSCmdlet.ParameterSetName -like "*IPAddress" -or $PSCmdlet.ParameterSetName -like "*DNSName")
                 {
-                    $Resources = get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName |? {$_.ResourceType -in $ResourceTypes}
+                    $Resources = get-azResource -ResourceGroupName $ResourceGroup.ResourceGroupName | ? { $_.ResourceType -in $ResourceTypes }
 
                     foreach ($Resource in $Resources)
                     {
-                        switch ($Resource.ResourceType) 
+                        $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+
+                        if ($PSCmdlet.ParameterSetName -like "*IPAddress")
                         {
-                            'Microsoft.Network/networkInterfaces'
+                            foreach ($ip in @($FoundIP))
                             {
-                                $Object = Get-azNetworkInterface -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
-                                $IP = Get-NetworkInterfacePrivateIp -NetworkInterface $Object
-                                if ($PSBoundParameters.ContainsKey('IPAddress'))
+                                if ($IP -eq $IPAddress)
                                 {
-                                    if ($IP -eq $IPAddress)
-                                    {
-                                        $Object
-                                    }
-                                }
-
-                                if ($PSBoundParameters.ContainsKey('DNSName'))
-                                {
-                                    $HostName = [System.Net.Dns]::GetHostEntry($IP).hostname
-                                    if ($HostName -eq $DNSName)
-                                    {
-                                        $Object
-                                    }
+                                    $Resource
+                                    break subloop
                                 }
                             }
-                            'Microsoft.Network/publicIPAddresses'
-                            {
-                                $Object = Get-azPublicIpAddress -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
-                                $IP = Get-PublicIPAddressPublicIP -PublicIPAddress $Object
-                                
-                                if ($PSBoundParameters.ContainsKey('IPAddress'))
-                                {
-                                    if ($IP -eq $IPAddress)
-                                    {
-                                        $Object
-                                    }
-                                }
-
-                                if ($PSBoundParameters.ContainsKey('DNSName'))
-                                {
-                                    $HostName = [System.Net.Dns]::GetHostEntry($IP).hostname
-                                    if ($HostName -eq $DNSName)
-                                    {
-                                        $Object
-                                    }
-                                }
-                            }
-                            Default {}
                         }
+
+                        if ($PSCmdlet.ParameterSetName -like "*DNSName")
+                        {
+                            $HostName = [System.Net.Dns]::GetHostEntry($IP).hostname
+                            if ($HostName -eq $DNSName)
+                            {
+                                $Resource
+                            }
+                        }
+
+
+                        # switch ($Resource.ResourceType) 
+                        # {
+                        #     'Microsoft.Network/networkInterfaces'
+                        #     {
+                        #         $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+                        #         # $Object = Get-azNetworkInterface -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
+                        #         # $IP = Get-NetworkInterfacePrivateIp -NetworkInterface $Object
+                        #         break
+                        #     }
+                        #     'Microsoft.Network/publicIPAddresses'
+                        #     {
+                        #         $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+                        #         # $Object = Get-azPublicIpAddress -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
+                        #         # $IP = Get-PublicIPAddressPublicIP -PublicIPAddress $Object
+                        #         break
+                        #     }
+                        #     'Microsoft.Web/sites'
+                        #     {
+                        #         $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+                        #         # $Object = Get-AzWebApp -Name $Resource.Name -ResourceGroupName $ResourceGroup.ResourceGroupName
+                        #         # $IP = $Object.OutboundIpAddresses -split ',' | select -first 1
+                        #         break
+                        #     }
+                        #     'Microsoft.Network/localNetworkGateways'
+                        #     {
+                        #         $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+                        #         # $Object = Get-AzLocalNetworkGateway -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name
+                        #         # $ip = $object.GatewayIpAddress
+                        #         break
+                        #     }
+                        #     'Microsoft.Storage/storageAccounts'
+                        #     {
+                        #         $FoundIP = Get-AzResourceIPAddress -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name -ResourceType $Resource.ResourceType
+                        #         # $Object = Get-AzLocalNetworkGateway -ResourceGroupName $ResourceGroup.ResourceGroupName -Name $Resource.Name
+                        #         # $ip = $object.GatewayIpAddress
+                        #         break
+                        #     }
+                        #     Default 
+                        #     {
+                        #         Write-verbose "Currently unable to process resource types '$($Resource.ResourceType)'"
+                        #     }
+                        # }
                     }
                 }
 

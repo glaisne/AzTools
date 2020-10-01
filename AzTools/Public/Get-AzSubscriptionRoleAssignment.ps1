@@ -1,13 +1,18 @@
 <#
 .Synopsis
-Short description
+Gets the user information for a given role in an Azure Subscription.
 .DESCRIPTION
 Long description
 .EXAMPLE
-Example of how to use this cmdlet
+Returns all the users and their roles from all subscriptions
+
+Get-AzSubscriptionRoleAssignment -AllSubscription -AADCredential $(Get-Credential)
 .EXAMPLE
-Another example of how to use this cmdlet
+Returns all the users with the owner role from the subscriptions named sub1 and sub2
+
+Get-AzSubscriptionRoleAssignment -SubscriptionName @('Sub1', 'Sub2') -RoleDefinitionName 'Owner' -AADCredential $(Get-Credential)
 #>
+
 function Get-AzSubscriptionRoleAssignment
 {
     [CmdletBinding()]
@@ -35,14 +40,20 @@ function Get-AzSubscriptionRoleAssignment
             ParameterSetName = "All",
             Position = 0)]
         [switch]
-        $All,
+        $AllSubscription,
+
+        [Parameter(Position = 1)]
+        [string[]]
+        $RoleDefinitionName,
+
+        [switch]
+        $IncludeGroupMembers,
         
         # Specify credentials for this CmdLet
         [ValidateNotNull()]
         [System.Management.Automation.PSCredential]
         [System.Management.Automation.Credential()]
         $AADCredential = [System.Management.Automation.PSCredential]::Empty
-
     )
 
     Begin
@@ -77,9 +88,11 @@ function Get-AzSubscriptionRoleAssignment
         {
             [PSCustomObject][Ordered] @{
                 DisplayName    = [string]::Empty
+                SignInName     = [string]::Empty
                 ObjectId       = [string]::Empty
                 Role           = [string]::Empty
                 Scope          = [string]::Empty
+                Subscription   = [string]::Empty
                 AssignmentType = [string]::Empty
                 GroupName      = [string]::Empty
             }
@@ -127,8 +140,16 @@ function Get-AzSubscriptionRoleAssignment
                 Write-Verbose "[$(Get-Date -format G)] Set the proper context $($(get-Azcontext).subscription.name)"
             }
         
-            
-            $RoleDefinitionNames = get-azroleassignment |Select RoleDefinitionName -unique | % RoleDefinitionName
+            $AllRoleDefinitionNames = get-azroleassignment | Select RoleDefinitionName -unique | % RoleDefinitionName
+
+            if ($PSBoundParameters.ContainsKey('RoleDefinitionName'))
+            {
+                $RoleDefinitionNames = $AllRoleDefinitionNames | ? { $_ -in $RoleDefinitionName }
+            }
+            else
+            {
+                $RoleDefinitionNames = $AllRoleDefinitionNames
+            }
         
             $PotentialOwners = [System.Collections.ArrayList]::new()
 
@@ -137,7 +158,7 @@ function Get-AzSubscriptionRoleAssignment
             foreach ($RoleDefinitionName in $RoleDefinitionNames)
             {
                 
-                $Assignees = $AllAssignments | ? {$_.roleDefinitionName -eq $RoleDefinitionName}
+                $Assignees = $AllAssignments | ? { $_.roleDefinitionName -eq $RoleDefinitionName }
         
                 foreach ($Assignee in $Assignees)
                 {
@@ -145,26 +166,54 @@ function Get-AzSubscriptionRoleAssignment
                     {
                         'Group'
                         {
-                            # Get the members of the gorup
-                            Write-Verbose "Assignee.DisplayName = $($Assignee.DisplayName)"
-                            $group = Get-AzADGroup -ObjectId $Assignee.ObjectId
 
-                            if (($Group | measure).count -gt 1)
+                            if ($IncludeGroupMembers)
                             {
-                                Write-Error "Group DisplayName ($($Assignee.DisplayName)) is ambiguous"
-                            }
+                                # Get the members of the gorup
+                                Write-Verbose "[$(Get-Date -format G)] Assignee.DisplayName = $($Assignee.DisplayName)"
+                                $group = Get-AzADGroup -ObjectId $Assignee.ObjectId
 
-                            foreach ($groupMember in $group | Get-AzADGroupmember )
-                            {
-                                $Assignment                = AssignmentResult
-                                $Assignment.DisplayName    = $GroupMember.DisplayName
-                                $Assignment.ObjectId       = $GroupMember.ObjectId
-                                $Assignment.Role           = $assignee.RoleDefinitionName
-                                $Assignment.Scope          = $Assignee.Scope
-                                $Assignment.AssignmentType = $assignee.ObjectType
-                                $Assignment.GroupName      = $group.DisplayName
+                                if (($Group | measure).count -gt 1)
+                                {
+                                    Write-Error "Group DisplayName ($($Assignee.DisplayName)) is ambiguous"
+                                }
+
+                                try
+                                {
+                                    $GroupMembers = $group | Get-AzADGroupmember
+                                }
+                                catch
+                                {
+                                    $err = $_
+                                    Write-Warning "[$(Get-Date -format G)] Problem getting group members for group $($Group.Name) : $($_.exception.message)"
+                                }
+
+                                foreach ($groupMember in $GroupMembers )
+                                {
+                                    $Assignment = AssignmentResult
+                                    $Assignment.DisplayName = $GroupMember.DisplayName
+                                    $Assignment.ObjectId = $GroupMember.ObjectId
+                                    $Assignment.Role = $assignee.RoleDefinitionName
+                                    $Assignment.Scope = $Assignee.Scope
+                                    $Assignment.Subscription = $SubscriptionName
+                                    $Assignment.AssignmentType = $assignee.ObjectType
+                                    $Assignment.GroupName = $group.DisplayName
 
                                 
+                                    $Assignment
+                                }
+                            }
+                            else
+                            {
+                                $Assignment = AssignmentResult
+                                $Assignment.DisplayName = $Assignee.DisplayName
+                                $Assignment.ObjectId = $Assignee.ObjectId
+                                $Assignment.Role = $assignee.RoleDefinitionName
+                                $Assignment.Scope = $Assignee.Scope
+                                $Assignment.Subscription = $SubscriptionName
+                                $Assignment.AssignmentType = $assignee.ObjectType
+                                $Assignment.GroupName = $group.DisplayName
+
                                 $Assignment
                             }
                         }
@@ -172,11 +221,14 @@ function Get-AzSubscriptionRoleAssignment
                         {
                             $user = Get-AzAdUser -DisplayName $Assignee.DisplayName
         
-                            $Assignment                = AssignmentResult
-                            $Assignment.DisplayName    = $Assignee.DisplayName
-                            $Assignment.ObjectId       = $Assignee.ObjectId
-                            $Assignment.Role           = $assignee.RoleDefinitionName
-                            $Assignment.AssignmentType = 'Direct'
+                            $Assignment = AssignmentResult
+                            $Assignment.DisplayName = $Assignee.DisplayName
+                            $Assignment.SignInName = $Assignee.SignInName
+                            $Assignment.ObjectId = $Assignee.ObjectId
+                            $Assignment.Role = $assignee.RoleDefinitionName
+                            $Assignment.Scope = $Assignee.Scope
+                            $Assignment.Subscription = $SubscriptionName
+                            $Assignment.AssignmentType = $assignee.ObjectType
 
                             $Assignment
                         }
@@ -184,11 +236,14 @@ function Get-AzSubscriptionRoleAssignment
                         {
                             $user = Get-AzADServicePrincipal -DisplayName $Assignee.DisplayName
         
-                            $Assignment                = AssignmentResult
-                            $Assignment.DisplayName    = $Assignee.DisplayName
-                            $Assignment.ObjectId       = $Assignee.ObjectId
-                            $Assignment.Role           = $assignee.RoleDefinitionName
-                            $Assignment.AssignmentType = 'Direct'
+                            $Assignment = AssignmentResult
+                            $Assignment.DisplayName = $Assignee.DisplayName
+                            $Assignment.SignInName = $Assignee.SignInName
+                            $Assignment.ObjectId = $Assignee.ObjectId
+                            $Assignment.Role = $assignee.RoleDefinitionName
+                            $Assignment.Scope = $Assignee.Scope
+                            $Assignment.Subscription = $SubscriptionName
+                            $Assignment.AssignmentType = $assignee.ObjectType
 
                             $Assignment
                         }
@@ -200,7 +255,9 @@ function Get-AzSubscriptionRoleAssignment
         
                             $Assignment = AssignmentResult
                             $Assignment.Role = $assignee.RoleDefinitionName
-                            $Assignment.AssignmentType = 'Direct'
+                            $Assignment.AssignmentType = $assignee.ObjectType
+                            $Assignment.Scope = $Assignee.Scope
+                            $Assignment.Subscription = $SubscriptionName
 
                             if ([string]::IsNullOrEmpty($Assignee.DisplayName))
                             {

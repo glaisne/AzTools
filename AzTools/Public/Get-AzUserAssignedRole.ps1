@@ -55,7 +55,11 @@ function Get-AzUserAssignedRole
         # A single subscription id or an array of subscription names
         [Parameter(ParameterSetName = 'SubscriptionId')]
         [String[]]
-        $SubscriptionId
+        $SubscriptionId,
+
+        [Parameter()]
+        [string]
+        $RoleName  
     )
     
     begin
@@ -72,7 +76,7 @@ function Get-AzUserAssignedRole
                 RoleDefinitionName = $RoleAssignment.RoleDefinitionName
                 Group              = $RoleAssignment.ObjectType -eq 'Group'
                 User               = $RoleAssignment.ObjectType -eq 'User'
-                GroupName          = $(If ($RoleAssignment.ObjectType -eq 'Group') {$RoleAssignment.DisplayName})
+                GroupName          = $(If ($RoleAssignment.ObjectType -eq 'Group') { $RoleAssignment.DisplayName })
                 RoleAssignmentId   = $RoleAssignment.RoleAssignmentId
                 SubscriptionName   = [string]::empty 
                 Scope              = $RoleAssignment.Scope.trim()
@@ -89,15 +93,15 @@ function Get-AzUserAssignedRole
                 {
                     $Err = $_
                     Write-Warning "Failed to set SubscriptionName on return object."
-                    $RoleAssignment |fl * -force | out-string -stream | ? {-not [string]::IsNullOrEmpty($_)} | % {Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$RoleAssignment: $_" }
-                    $Object |fl * -force | out-string -stream | ? {-not [string]::IsNullOrEmpty($_)} | % {Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$Object: $_" }
+                    $RoleAssignment | fl * -force | out-string -stream | ? { -not [string]::IsNullOrEmpty($_) } | % { Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$RoleAssignment: $_" }
+                    $Object | fl * -force | out-string -stream | ? { -not [string]::IsNullOrEmpty($_) } | % { Write-Warning "[$(Get-Date -format G)] CreateReturnPSObject: `$Object: $_" }
                 }
                 $Object
             }
             else
             {
                 Write-Warning "CreateReturnPSObject: RoleAssignment scope is invalid"
-                $RoleAssignment | fl * -force | out-string -stream |? {-not [string]::isnullOrEmpty($_)} | % {Write-Warning "    $_"}
+                $RoleAssignment | fl * -force | out-string -stream | ? { -not [string]::isnullOrEmpty($_) } | % { Write-Warning "    $_" }
             }
         }
 
@@ -152,7 +156,7 @@ function Get-AzUserAssignedRole
                 $SubscriptionPool = $SubscriptionPool.ToArray()
                 break
             }
-            Default { Throw 'could not find parameter name set.'}
+            Default { Throw 'could not find parameter name set.' }
         }
 
         $RMADUser = $null
@@ -294,12 +298,26 @@ function Get-AzUserAssignedRole
             if ($RMADUser -ne $null -and ($RMADUser | measure).count -eq 1)
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for user ID $($RMADUser.Id)"
-                $RoleAssignment = Get-azRoleAssignment -ObjectId $RMADUser.Id | select $Properties
+                if ($PSBoundParameters.ContainsKey('RoleName'))
+                {
+                    $RoleAssignment = Get-azRoleAssignment -ObjectId $RMADUser.Id -RoleDefinitionName $RoleName | select $Properties
+                }
+                else
+                {
+                    $RoleAssignment = Get-azRoleAssignment -ObjectId $RMADUser.Id | select $Properties
+                }
             }
             else
             {
                 Write-Verbose "[$(Get-Date -format G)] Getting Role Assignment for User by DisplayName or SignInName ($Username)."
-                $RoleAssignment = Get-azRoleAssignment |? {$_.displayName -eq "$Username" -or $_.SignInName -like "$Username@*"} | select $Properties
+                if ($PSBoundParameters.ContainsKey('RoleName'))
+                {
+                    $RoleAssignment = Get-azRoleAssignment -RoleDefinitionName $RoleName -ObjectId $RMADUser.Id -RoleDefinitionName $RoleName | select $Properties
+                }
+                else
+                {
+                    $RoleAssignment = Get-azRoleAssignment | ? { $_.displayName -eq "$Username" -or $_.SignInName -like "$Username@*" } | select $Properties
+                }
             }
 
             # Return our custom object with user and assignment information.
@@ -314,7 +332,15 @@ function Get-AzUserAssignedRole
             #
 
             Write-Verbose "[$(Get-Date -format G)] Checking group memberships..."
-            $GroupAssignments = Get-azRoleAssignment |? {$_.ObjectType -eq 'Group'}
+            if ($PSBoundParameters.ContainsKey('RoleName'))
+            {
+                $GroupAssignments = Get-azRoleAssignment -RoleDefinitionName $RoleName | ? { $_.ObjectType -eq 'Group' }
+            }
+            else
+            {
+                $GroupAssignments = Get-azRoleAssignment | ? { $_.ObjectType -eq 'Group' }
+            }
+            
             $j = 0
             Foreach ($Group in $GroupAssignments)
             {

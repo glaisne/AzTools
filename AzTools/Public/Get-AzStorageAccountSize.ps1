@@ -33,22 +33,63 @@ function Get-AzStorageAccountSize
     }
     Process
     {
-        $storageAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName
-        $context = $storageAccount.Context
-        
-        $listOfBLobs = foreach ($Container in get-azStorageContainer -Context $context)
+        # Build the ID of the storage account
+        $Context = Get-AzContext
+
+        $BaseId = '/subscriptions/{0}/resourceGroups/{1}/providers/{2}/storageAccounts/{3}'
+        $id = $BaseId -f $context.subscription.id, $ResourceGroupName, 'Microsoft.Storage', $StorageAccountName
+
+        Write-Verbose "Checking if Storage Account with Id $Id exists."
+
+        try
         {
-            Get-AzStorageBlob -Container $Container.Name -Context $context 
+            $storageAccount = Get-AzResource -ODataQuery "`$Filter=ResourceId eq '$id'" -ErrorAction Stop
+        }
+        catch
+        {
+            $err = $_
+            Write-Warning "Unable to find Storage Account ($ResourceGroupName/$StorageAccountName) as ARM resource."
         }
 
-        # zero out our total
-        $length = 0
+        if (-not $storageAccount)
+        {
+            Write-Verbose "Trying to find storage account ($ResourceGroupName/$StorageAccountName) as Classic resource."
 
-        # this loops through the list of blobs and retrieves the length for each blob
-        #   and adds it to the total
-        $listOfBlobs | ForEach-Object {$length = $length + $_.Length}
+            $id = $id.Replace("/providers/Microsoft.Storage/storageAccounts/", "/providers/Microsoft.ClassicStorage/storageAccounts/")
 
-        $length
+            Write-Verbose "Checking if Storage Account with Id $Id exists."
+            
+            try
+            {
+                $storageAccount = Get-AzResource -ODataQuery "`$Filter=ResourceId eq '$id'" -ErrorAction Stop
+            }
+            catch
+            {
+                $err = $_
+                Write-Warning "Unable to find Storage Account ($ResourceGroupName/$StorageAccountName) as Classic resource."
+            }
+
+            if ($storageAccount)
+            {
+                Write-Warning "Storage Account ($ResourceGroupName/$StorageAccountName) is a Classic resoruce. Storage Account size only accounts for Blobs in this case."
+            }
+        }
+
+        if (-not $storageAccount)
+        {
+            throw "Unable to access Storage account in resource group '$ResourceGroupName' with name '$StorageAccountName'"
+        }
+
+        $Size = get-azmetric -resourceId $id -MetricName 'UsedCapacity' | % data  | % Average
+
+        if ([string]::IsNullOrEmpty($Size))
+        {
+            0
+        }
+        else
+        {
+            $Size
+        }
     }
     End
     {

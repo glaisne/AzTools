@@ -35,7 +35,7 @@ function Find-AzRoleDefinitionByAction
         foreach ($Role in $Roles)
         {
             Write-Verbose "Searching $($Role.Name)"
-            foreach ($RoleAction in $Role.Action)
+            foreach ($RoleAction in $Role.Actions)
             {
                 if ($RoleAction -like "*$Action*")
                 {

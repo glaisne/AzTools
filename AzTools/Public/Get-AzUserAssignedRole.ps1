@@ -65,7 +65,6 @@ function Get-AzUserAssignedRole
     begin
     {
         $GuidRegex = "^[{(]?[0-9A-F]{8}[-]?([0-9A-F]{4}[-]?){3}[0-9A-F]{12}[)}]?$"
-        $SubscriptionPool = [System.Collections.ArrayList]::new()
 
         function CreateReturnPSObject ($RoleAssignment, $Username, $RMADUser, $SubscriptionName)
         {
@@ -112,6 +111,9 @@ function Get-AzUserAssignedRole
     process
     {
         Write-Verbose "[$(Get-Date -format G)] Getting Subscriptions"
+        
+        $SubscriptionPool = [System.Collections.ArrayList]::new()
+        
         switch ($PSCmdlet.ParameterSetName)
         {
             'AllSubscriptions'
@@ -135,7 +137,7 @@ function Get-AzUserAssignedRole
                         Write-Warning "Failed to access Subscription ($SubName) : $($err.exception.Message)"
                     }
                 }
-                $SubscriptionPool = $SubscriptionPool.ToArray()
+                # $SubscriptionPool = $SubscriptionPool.ToArray()
                 break
             }
             'SubscriptionId'
@@ -153,7 +155,7 @@ function Get-AzUserAssignedRole
                         Write-Warning "Failed to access Subscription ($SubId) : $($err.exception.Message)"
                     }
                 }
-                $SubscriptionPool = $SubscriptionPool.ToArray()
+                # $SubscriptionPool = $SubscriptionPool.ToArray()
                 break
             }
             Default { Throw 'could not find parameter name set.' }
@@ -220,6 +222,49 @@ function Get-AzUserAssignedRole
             {
                 $err = $_
                 Write-Warning "Failed attempting to access RM AD User with DisplayName : $($err.exception.message)"
+            }
+        }
+
+        # going for a deep search now!
+
+        if ($RMADUser -eq $null -or ($RMADUser | measure).count -gt 1)
+        {
+            Write-Verbose "[$(Get-Date -format G)] Failed to get the user by traditional means. Doing a deep search now. Please wait."
+            Write-Verbose "[$(Get-Date -format G)] Getting all users."
+            $AllUsers = get-azaduser | select UserPrincipalName, MailNickname, Id
+
+            foreach ($user in $AllUsers)
+            {
+                if ($user.MailNickname -eq $Username.trim() -and -not [string]::IsNullOrEmpty($user.id))
+                {
+                    try
+                    {
+                        $RMADUser = Get-azAdUser -ObjectId $user.id -ErrorAction Stop
+                    }
+                    catch
+                    {
+                        $err = $_
+                        Write-Warning "Failed attempting to access RM AD User with MailNickname : $($err.exception.message)"
+                    }
+                }
+
+                if ($user.UserPrincipalName -like "$($Username.trim())@*" -and $RMADUser -eq $null -and -not [string]::IsNullOrEmpty($user.id))
+                {
+                    try
+                    {
+                        $RMADUser = Get-azAdUser -ObjectId $user.id -ErrorAction Stop
+                    }
+                    catch
+                    {
+                        $err = $_
+                        Write-Warning "Failed attempting to access RM AD User with UserPrincipalName (alias only) : $($err.exception.message)"
+                    }
+                }
+
+                if ($RMADUser -ne $null)
+                {
+                    break
+                }
             }
         }
 

@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    finds a users Assignment Role in an Azure Subscription (at the subscription level).
+    finds a users Assignment Role in an Azure Subscription.
 .DESCRIPTION
     Long description
 .EXAMPLE
